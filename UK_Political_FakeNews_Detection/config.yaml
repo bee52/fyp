@@ -1,0 +1,46 @@
+project:
+  name: UK_Political_FakeNews_Detection
+  random_seed: 42
+
+paths:
+  raw_data_dir: data/raw
+  processed_data_dir: data/processed
+
+data_contract:
+  required_columns:
+    - title
+    - text
+    - source
+    - date
+    - label
+  label_map:
+    real:
+      - REAL
+      - real
+      - 0
+      - 0.0
+      - true
+    fake:
+      - FAKE
+      - fake
+      - satire
+      - 1
+      - 1.0
+      - false
+
+splits:
+  test_size: 0.2
+  val_size: 0.1
+  stratify: true
+
+scraping:
+  run_mode: standard
+  default_output_dir: data/raw
+  real:
+    max_articles_per_source: 200
+    base_delay_seconds: 2.0
+    max_retries: 3
+  fake:
+    max_articles_per_source: 200
+    base_delay_seconds: 2.0
+    max_retries: 3
