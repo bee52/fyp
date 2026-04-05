@@ -44,3 +44,9 @@ scraping:
     max_articles_per_source: 200
     base_delay_seconds: 2.0
     max_retries: 3
+
+training:
+  split_dir: data/processed/phase1
+  output_dir: models/phase2
+  semantic:
+    max_features: 20000

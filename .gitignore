@@ -37,8 +37,8 @@ env/
 *.swo
 
 # Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
+# .ipynb_checkpoints
+# *.ipynb
 
 # Data and models
 data/
