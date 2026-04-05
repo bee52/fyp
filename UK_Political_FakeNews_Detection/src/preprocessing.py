@@ -9,9 +9,9 @@ from sklearn.model_selection import train_test_split
 from textblob import TextBlob
 
 try:
-    from .schema import normalize_dataframe
+    from .schema import normalize_dataframe, normalize_label
 except ImportError:
-    from schema import normalize_dataframe
+    from schema import normalize_dataframe, normalize_label
 
 
 STYLE_FEATURE_COLUMNS = [
@@ -28,10 +28,9 @@ def load_and_harmonize(real_csv_path: str | Path, fake_csv_path: str | Path) -> 
     real_df = pd.read_csv(real_csv_path)
     fake_df = pd.read_csv(fake_csv_path)
 
-    if "label" not in real_df.columns:
-        real_df["label"] = 0
-    if "label" not in fake_df.columns:
-        fake_df["label"] = 1
+    # Force labels by source file to prevent mixed/blank legacy labels from leaking in.
+    real_df["label"] = 0
+    fake_df["label"] = 1
 
     combined = pd.concat([real_df, fake_df], ignore_index=True)
     return normalize_dataframe(combined)
@@ -44,12 +43,12 @@ def balance_dataset(df: pd.DataFrame, random_seed: int = 42) -> pd.DataFrame:
         raise ValueError("Dataset must contain both classes 0 and 1")
 
     minority_count = counts.min()
-    balanced = (
-        normalized.groupby("label", group_keys=False)
-        .apply(lambda part: part.sample(n=minority_count, random_state=random_seed))
-        .sample(frac=1.0, random_state=random_seed)
-        .reset_index(drop=True)
-    )
+    parts = []
+    for label_value in sorted(normalized["label"].unique()):
+        class_slice = normalized[normalized["label"] == label_value]
+        parts.append(class_slice.sample(n=minority_count, random_state=random_seed))
+
+    balanced = pd.concat(parts, ignore_index=True).sample(frac=1.0, random_state=random_seed).reset_index(drop=True)
     return balanced
 
 
@@ -105,13 +104,22 @@ def stratified_split(
     if test_size + val_size >= 1:
         raise ValueError("test_size + val_size must be < 1")
 
-    normalized = normalize_dataframe(df)
+    frame = df.copy()
+    for column in ["title", "text", "source", "date", "label"]:
+        if column not in frame.columns:
+            raise ValueError(f"Missing required column for split: {column}")
+
+    frame["title"] = frame["title"].astype(str).str.strip()
+    frame["text"] = frame["text"].astype(str).str.strip()
+    frame["source"] = frame["source"].astype(str).str.strip()
+    frame["date"] = frame["date"].astype(str).str.strip()
+    frame["label"] = frame["label"].apply(normalize_label)
 
     train_val, test = train_test_split(
-        normalized,
+        frame,
         test_size=test_size,
         random_state=random_seed,
-        stratify=normalized["label"],
+        stratify=frame["label"],
     )
 
     val_fraction_of_train_val = val_size / (1 - test_size)

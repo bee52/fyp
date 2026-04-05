@@ -18,6 +18,12 @@ st.write("Verify the credibility of online political claims using Dual-Branch Ma
 
 # User Input
 user_text = st.text_area("Paste Article Text here:", height=200)
+stack_choice = st.radio(
+    "Choose Inference Stack",
+    options=["roberta", "sklearn"],
+    horizontal=True,
+    help="RoBERTa uses transformer embeddings + fusion; sklearn uses TF-IDF + fusion.",
+)
 
 if st.button("Analyze Article"):
     if user_text.strip() == "":
@@ -25,13 +31,24 @@ if st.button("Analyze Article"):
     else:
         with st.spinner("Analyzing semantics and style..."):
             # Execute the OOP pipeline!
-            results = detector.predict(user_text)
+            results = detector.predict(user_text, stack=stack_choice)
             
             # Display Results
             st.markdown("---")
+            st.caption(f"Stack: {results['stack']}")
             st.subheader(f"Verdict: {results['prediction']}")
             st.progress(results['confidence'])
             st.write(f"Confidence Score: {results['confidence'] * 100:.1f}%")
+
+            branch_scores = results.get("branch_scores", {})
+            st.markdown("### Branch Scores")
+            st.write(
+                {
+                    "style_fake_probability": branch_scores.get("style_fake_probability"),
+                    "semantic_fake_probability": branch_scores.get("semantic_fake_probability"),
+                    "fusion_fake_probability": branch_scores.get("fusion_fake_probability"),
+                }
+            )
             
             st.markdown("### Branch B: Stylistic Breakdown")
             st.json(results['stylistic_breakdown'])

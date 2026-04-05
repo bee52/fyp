@@ -36,3 +36,9 @@ Scope: Start of Phase 1 implementation (data contract, config layer, preprocessi
 2. Add tests for schema normalization and split reproducibility.
 3. Add a dedicated Phase 1 CLI runner command in `src/pipeline.py` or a new `src/run_phase1.py`.
 4. Connect notebook cells to imported preprocessing functions for reproducible execution.
+
+## Added in model-training continuation
+1. Created `src/training.py` for Branch B, Branch A semantic baseline, and fusion training/evaluation.
+2. Created `src/train_models.py` as terminal entrypoint for full training run.
+3. Added training config section to `config.yaml`.
+4. Added `run_model_training` method in `src/pipeline.py`.
