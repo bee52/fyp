@@ -27,6 +27,7 @@ try:
         stratified_split,
         write_phase1_artifacts,
     )
+    from .schemas import BranchScores, PredictRequest, PredictResponse, StylisticBreakdown
     from .training import run_training_from_phase1
 except ImportError:
     from config import load_config, project_path
@@ -39,6 +40,7 @@ except ImportError:
         stratified_split,
         write_phase1_artifacts,
     )
+    from schemas import BranchScores, PredictRequest, PredictResponse, StylisticBreakdown
     from training import run_training_from_phase1
 
 
@@ -163,15 +165,16 @@ class UKFakeNewsPipeline:
 
     def predict(self, raw_text: str, stack: str | None = None) -> Dict[str, Any]:
         """Run inference using either 'sklearn' or 'roberta' stack."""
-        selected_stack = (stack or self.default_stack).lower().strip()
-        if selected_stack not in {"sklearn", "roberta"}:
-            raise ValueError("stack must be one of: sklearn, roberta")
+        request = PredictRequest.model_validate(
+            {
+                "raw_text": raw_text,
+                "stack": (stack or self.default_stack).lower().strip(),
+            }
+        )
+        selected_stack = request.stack
 
-        if str(raw_text or "").strip() == "":
-            raise ValueError("raw_text cannot be empty")
-
-        style_features = self.extract_branch_b_features(raw_text)
-        clean_text = self.prepare_branch_a_text(raw_text)
+        style_features = self.extract_branch_b_features(request.raw_text)
+        clean_text = self.prepare_branch_a_text(request.raw_text)
         style_input = self._style_df(style_features)
 
         if selected_stack == "sklearn":
@@ -185,11 +188,11 @@ class UKFakeNewsPipeline:
             fusion_input = np.array([[style_score, semantic_score]], dtype=float)
             fake_probability = float(self.fusion_model.predict_proba(fusion_input)[0, 1])
 
-            branch_scores: Dict[str, float | None] = {
-                "style_fake_probability": style_score,
-                "semantic_fake_probability": semantic_score,
-                "fusion_fake_probability": fake_probability,
-            }
+            branch_scores = BranchScores(
+                style_fake_probability=style_score,
+                semantic_fake_probability=semantic_score,
+                fusion_fake_probability=fake_probability,
+            )
         else:
             self._load_roberta_models()
             assert self.style_model is not None
@@ -209,23 +212,24 @@ class UKFakeNewsPipeline:
             if self.roberta_classifier is not None:
                 semantic_score = float(self.roberta_classifier.predict_proba(embedding)[0, 1])
 
-            branch_scores = {
-                "style_fake_probability": style_score,
-                "semantic_fake_probability": semantic_score,
-                "fusion_fake_probability": fake_probability,
-            }
+            branch_scores = BranchScores(
+                style_fake_probability=style_score,
+                semantic_fake_probability=semantic_score,
+                fusion_fake_probability=fake_probability,
+            )
 
         prediction = "Unreliable" if fake_probability >= 0.5 else "Reliable"
         confidence = fake_probability if prediction == "Unreliable" else (1.0 - fake_probability)
 
-        return {
-            "prediction": prediction,
-            "confidence": float(confidence),
-            "fake_probability": float(fake_probability),
-            "stack": selected_stack,
-            "branch_scores": branch_scores,
-            "stylistic_breakdown": style_features,
-        }
+        response = PredictResponse(
+            prediction=prediction,
+            confidence=float(confidence),
+            fake_probability=float(fake_probability),
+            stack=selected_stack,
+            branch_scores=branch_scores,
+            stylistic_breakdown=StylisticBreakdown(**style_features),
+        )
+        return response.model_dump()
 
     def run_phase1_data_preparation(self, real_csv: str | Path, fake_csv: str | Path) -> Dict[str, Any]:
         """Builds deterministic Phase 1 artifacts from canonical raw sources."""
@@ -235,7 +239,17 @@ class UKFakeNewsPipeline:
 
         combined = load_and_harmonize(real_csv, fake_csv)
         balanced = balance_dataset(combined, random_seed=seed)
-        featured = add_style_features(balanced, text_column="text")  # BEFORE cleaning
+
+        # Preserve uppercase and punctuation cues for stylistic features.
+        style_ready = balanced.copy()
+        style_ready["style_text"] = (
+            style_ready["title"].fillna("").astype(str).str.strip()
+            + " "
+            + style_ready["text"].fillna("").astype(str).str.strip()
+        ).str.strip()
+
+        featured = add_style_features(style_ready, text_column="style_text")  # BEFORE cleaning
+        featured = featured.drop(columns=["style_text"], errors="ignore")
         cleaned = clean_text_column(featured, text_column="text")     # AFTER features
 
         train_df, val_df, test_df = stratified_split(

@@ -99,6 +99,8 @@ Successfully implemented and validated two complete semantic + stylistic fusion 
 - **Preprocessing**: StandardScaler normalization
 - **Contribution**: Stable 0.8645 macro-F1 across both stacks
 
+**Implementation note**: The Branch B feature pipeline was corrected so style features are extracted from case-preserving text before semantic lowercasing. This fixes a preprocessing bug that had driven `shout_ratio` to zero in the earlier Gini plot. The regenerated Figure 5.2 now reflects the true stylistic signal in the retrained Branch B model.
+
 ### TF-IDF Stack: Semantic Branch (Branch A)
 - **Model**: Pipeline[TfidfVectorizer → LogisticRegression]
 - **TF-IDF Config**:
